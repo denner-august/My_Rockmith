@@ -1,0 +1,38 @@
+{
+  "id": "meu_riff",
+  "nome": "Meu primeiro riff",
+  "bpm": 100,
+  "descricao": "Exemplo de riff na corda Mi grave",
+  "eventos": [
+    {
+      "corda": "E",
+      "traste": 0,
+      "pulso": 0
+    },
+    {
+      "corda": "E",
+      "traste": 0,
+      "pulso": 0.5
+    },
+    {
+      "corda": "E",
+      "traste": 3,
+      "pulso": 1
+    },
+    {
+      "corda": "E",
+      "traste": 3,
+      "pulso": 1.5
+    },
+    {
+      "corda": "A",
+      "traste": 2,
+      "pulso": 2
+    },
+    {
+      "corda": "A",
+      "traste": 2,
+      "pulso": 3
+    }
+  ]
+}

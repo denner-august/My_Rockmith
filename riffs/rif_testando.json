@@ -1,0 +1,48 @@
+{
+  "id": "escala_do_maior",
+  "nome": "Escala de Dó Maior",
+  "bpm": 120,
+  "descricao": "Escala de Dó Maior em uma oitava",
+  "eventos": [
+    {
+      "corda": "A",
+      "traste": 3,
+      "pulso": 0
+    },
+    {
+      "corda": "A",
+      "traste": 5,
+      "pulso": 0.5
+    },
+    {
+      "corda": "D",
+      "traste": 2,
+      "pulso": 1
+    },
+    {
+      "corda": "D",
+      "traste": 3,
+      "pulso": 1.5
+    },
+    {
+      "corda": "D",
+      "traste": 5,
+      "pulso": 2
+    },
+    {
+      "corda": "G",
+      "traste": 2,
+      "pulso": 2.5
+    },
+    {
+      "corda": "G",
+      "traste": 4,
+      "pulso": 3
+    },
+    {
+      "corda": "G",
+      "traste": 5,
+      "pulso": 3.5
+    }
+  ]
+}

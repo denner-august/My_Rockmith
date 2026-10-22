@@ -1,0 +1,268 @@
+{
+  "id": "arctic_monkeys_ru_mine",
+  "nome": "R U Mine? — riff principal",
+  "bpm": 97,
+  "descricao": "Versão aproximada do trecho visível na imagem enviada, afinação padrão E A D G B E. Notas monofônicas na corda Mi grave; acordes simultâneos não estão representados.",
+  "eventos": [
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 0
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 1
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 4
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 4.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 5.5
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 6.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 7
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 7.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 8
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 10
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 10.5
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 11
+    },
+    {
+      "corda": "E",
+      "traste": 4,
+      "pulso": 11.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 12
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 12.5
+    },
+    {
+      "corda": "E",
+      "traste": 14,
+      "pulso": 13
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 16
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 16.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 17
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 17.5
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 18.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 19
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 19.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 20
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 22
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 22.5
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 23
+    },
+    {
+      "corda": "E",
+      "traste": 4,
+      "pulso": 23.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 24
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 24.5
+    },
+    {
+      "corda": "E",
+      "traste": 14,
+      "pulso": 25
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 28
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 28.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 29
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 29.5
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 30.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 31
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 31.5
+    },
+    {
+      "corda": "E",
+      "traste": 9,
+      "pulso": 32
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 34
+    },
+    {
+      "corda": "E",
+      "traste": 7,
+      "pulso": 34.5
+    },
+    {
+      "corda": "E",
+      "traste": 6,
+      "pulso": 35
+    },
+    {
+      "corda": "E",
+      "traste": 4,
+      "pulso": 35.5
+    },
+    {
+      "corda": "E",
+      "traste": 4,
+      "pulso": 36
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 38
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 38.5
+    },
+    {
+      "corda": "E",
+      "traste": 5,
+      "pulso": 39
+    },
+    {
+      "corda": "E",
+      "traste": 4,
+      "pulso": 39.5
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 40
+    },
+    {
+      "corda": "E",
+      "traste": 2,
+      "pulso": 40.5
+    },
+    {
+      "corda": "E",
+      "traste": 0,
+      "pulso": 41
+    }
+  ]
+}
