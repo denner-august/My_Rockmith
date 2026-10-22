@@ -67,43 +67,17 @@ def main():
         print("Use --tamanho LARGURAxALTURA, por exemplo 1920x1080")
         sys.exit(1)
 
-    p = pyaudio.PyAudio()
     if args.listar:
-        listar_dispositivos(p)
-        p.terminate()
+        p = pyaudio.PyAudio()
+        try:
+            listar_dispositivos(p)
+        finally:
+            p.terminate()
         return
 
-    indice = args.dispositivo if args.dispositivo is not None else achar_cabo(p)
-    if indice is None:
-        print('Não encontrei nenhuma entrada com "Rocksmith" no nome.')
-        listar_dispositivos(p)
-        print("\nRode de novo com: python mini_rocksmith.py --dispositivo N")
-        p.terminate()
-        sys.exit(1)
-
-    try:
-        stream, taxa, canais = abrir_stream(p, indice)
-    except RuntimeError as e:
-        print(e)
-        p.terminate()
-        sys.exit(1)
-
-    saida, canais_saida = (
-        (None, 0) if args.sem_monitor else abrir_saida(p, taxa, args.saida)
-    )
-
-    detector = DetectorPitch(stream, taxa, canais, saida, canais_saida)
-    detector.start()
-
-    pygame.init()
-    try:
-        pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
-        click_forte = criar_click(1100, volume=0.42)
-        click_fraco = criar_click(750, volume=0.25)
-        metronomo_disponivel = True
-    except pygame.error:
-        click_forte = click_fraco = None
-        metronomo_disponivel = False
+    # A interface e a navegação não dependem de dispositivos de áudio.
+    pygame.display.init()
+    pygame.font.init()
     flags = pygame.SCALED | (0 if args.janela else pygame.FULLSCREEN)
     tela = pygame.display.set_mode((largura, altura), flags)
     pygame.display.set_caption("Mini Rocksmith v2")
@@ -114,9 +88,9 @@ def main():
     fonte_g = pygame.font.SysFont(None, int(48 * lay.esc))
     fonte_t = pygame.font.SysFont(None, int(64 * lay.esc))
     fonte_n = pygame.font.SysFont(None, int(26 * lay.esc))  # nome da nota sob a bolinha
-    fonte_menu_titulo = pygame.font.SysFont(None, int(30 * lay.esc), bold=True)
-    fonte_menu_card = pygame.font.SysFont(None, int(22 * lay.esc), bold=True)
-    fonte_menu_info = pygame.font.SysFont(None, int(17 * lay.esc))
+    fonte_menu_titulo = pygame.font.SysFont(None, int(36 * lay.esc), bold=True)
+    fonte_menu_card = pygame.font.SysFont(None, int(27 * lay.esc), bold=True)
+    fonte_menu_info = pygame.font.SysFont(None, int(20 * lay.esc))
     fonte_hud = pygame.font.SysFont(None, int(18 * lay.esc), bold=True)
     fonte_hud_menor = pygame.font.SysFont(None, int(14 * lay.esc))
     fonte_nota = pygame.font.SysFont(None, int(22 * lay.esc), bold=True)
@@ -136,9 +110,84 @@ def main():
     ultimo_tique = -1
     pontos = combo = melhor_combo = acertos = erros = 0
     efeitos = []
+    p = stream = saida = detector = None
+    canais_saida = 0
+    click_forte = click_fraco = None
+    metronomo_disponivel = False
+    aviso_audio = ""
+    aviso_audio_ate = 0.0
 
     def iniciar():
         return criar_notas(riff_selecionado, velocidade_nota), time.perf_counter(), 0, 0, 0, 0, 0
+
+    def notificar_audio(mensagem):
+        nonlocal aviso_audio, aviso_audio_ate
+        aviso_audio = mensagem
+        aviso_audio_ate = time.perf_counter() + 6.0
+
+    def encerrar_audio():
+        nonlocal p, stream, saida, detector, canais_saida
+        if detector is not None:
+            detector.parar()
+            try:
+                detector.join(timeout=1.0)
+            except RuntimeError:
+                pass  # a thread pode não ter iniciado se a abertura falhou
+        for fluxo in (stream, saida):
+            if fluxo is not None:
+                try:
+                    fluxo.stop_stream()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    fluxo.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        if p is not None:
+            try:
+                p.terminate()
+            except Exception:  # noqa: BLE001
+                pass
+        p = stream = saida = detector = None
+        canais_saida = 0
+
+    def preparar_audio():
+        nonlocal p, stream, saida, canais_saida, detector
+        nonlocal click_forte, click_fraco, metronomo_disponivel
+        nonlocal aviso_audio
+        if detector is not None and detector.is_alive():
+            return True
+        encerrar_audio()
+        try:
+            p = pyaudio.PyAudio()
+            indice = args.dispositivo if args.dispositivo is not None else achar_cabo(p)
+            if indice is None:
+                raise RuntimeError(
+                    'Cabo Rocksmith não encontrado. Conecte-o e tente novamente.'
+                )
+            stream, taxa, canais = abrir_stream(p, indice)
+            if not args.sem_monitor:
+                saida, canais_saida = abrir_saida(p, taxa, args.saida)
+            detector = DetectorPitch(stream, taxa, canais, saida, canais_saida)
+            detector.start()
+        except Exception:  # noqa: BLE001
+            encerrar_audio()
+            notificar_audio(
+                "Áudio indisponível. Conecte o cabo Rocksmith e tente novamente."
+            )
+            return False
+
+        if not metronomo_disponivel:
+            try:
+                if pygame.mixer.get_init() is None:
+                    pygame.mixer.init(frequency=22050, size=-16, channels=1, buffer=512)
+                click_forte = criar_click(1100, volume=0.42)
+                click_fraco = criar_click(750, volume=0.25)
+                metronomo_disponivel = True
+            except pygame.error:
+                click_forte = click_fraco = None
+        aviso_audio = ""
+        return True
 
     escala_ui = lay.esc
     bw, bh = int(120 * escala_ui), int(42 * escala_ui)
@@ -168,17 +217,24 @@ def main():
         "padrao": pygame.Rect(botoes["menu"].x + perfil_w + perfil_gap, perfil_y, perfil_w, perfil_h),
         "rapido": pygame.Rect(botoes["menu"].x + 2 * (perfil_w + perfil_gap), perfil_y, perfil_w, perfil_h),
     }
-    menu_rect = pygame.Rect(int(lay.l * 0.30), int(lay.a * 0.22), int(lay.l * 0.40), int(lay.a * 0.56))
+    # O seletor usa a maior parte da tela, preservando uma margem confortável.
+    menu_largura = min(int(lay.l * 0.76), lay.l - int(32 * escala_ui))
+    menu_altura = min(int(lay.a * 0.78), lay.a - int(32 * escala_ui))
+    menu_rect = pygame.Rect(
+        (lay.l - menu_largura) // 2,
+        (lay.a - menu_altura) // 2,
+        menu_largura,
+        menu_altura,
+    )
     riff_botoes = {}
-    item_h = int(65 * escala_ui)
+    item_h = int(78 * escala_ui)
     riff_scroll = 0
     riff_foco = riff_selecionado
-    item_passo = item_h + int(20 * escala_ui)
-    # Reserva espaço real para o cabeçalho e o rodapé. A conta anterior era
-    # conservadora demais e, em 1080p, mostrava só um riff por vez.
-    inicio_lista = int(82 * escala_ui)
-    altura_cartao = item_h + int(12 * escala_ui)
-    espaco_rodape = int(34 * escala_ui)
+    item_passo = item_h + int(18 * escala_ui)
+    # Reserva espaço real para o cabeçalho, os cartões e o rodapé.
+    inicio_lista = int(104 * escala_ui)
+    altura_cartao = item_h + int(16 * escala_ui)
+    espaco_rodape = int(42 * escala_ui)
     riff_visiveis = max(
         1,
         1 + max(
@@ -203,11 +259,15 @@ def main():
 
     def reiniciar():
         nonlocal notas, t0, pontos, combo, melhor_combo, acertos, erros, efeitos, estado_jogo, pausado_em, ultimo_tique
+        if not preparar_audio():
+            estado_jogo = "espera"
+            return False
         notas, t0, pontos, combo, melhor_combo, acertos, erros = iniciar()
         efeitos = []
         estado_jogo = "jogando"
         pausado_em = None
         ultimo_tique = -1
+        return True
 
     def selecionar_perfil_velocidade(nome):
         """Aplica o perfil e reinicia somente uma partida que já esteja em curso."""
@@ -256,7 +316,7 @@ def main():
                         (
                             k
                             for k, rect in riff_botoes.items()
-                            if rect.inflate(0, int(12 * escala_ui)).collidepoint(pos)
+                            if rect.inflate(0, int(16 * escala_ui)).collidepoint(pos)
                         ),
                         None,
                     )
@@ -346,25 +406,29 @@ def main():
                     ajustar_perfil_velocidade(0.05)
                 elif ev.key == pygame.K_t:
                     metronomo_ligado = not metronomo_ligado
-                elif ev.key == pygame.K_m and detector.saida is not None:
+                elif ev.key == pygame.K_m and detector is not None and detector.saida is not None:
                     detector.monitor = not detector.monitor
-                elif ev.key == pygame.K_d:
+                elif ev.key == pygame.K_d and detector is not None:
                     detector.overdrive = not detector.overdrive
-                elif ev.key == pygame.K_UP:
+                elif ev.key == pygame.K_UP and detector is not None:
                     detector.volume = min(1.5, detector.volume + 0.1)
-                elif ev.key == pygame.K_DOWN:
+                elif ev.key == pygame.K_DOWN and detector is not None:
                     detector.volume = max(0.0, detector.volume - 0.1)
                 elif ev.key == pygame.K_LEFT:
                     latencia = max(0.0, latencia - 0.01)
                 elif ev.key == pygame.K_RIGHT:
                     latencia = min(0.5, latencia + 0.01)
 
-        if detector.erro:
-            print(f"Erro de áudio: {detector.erro}")
-            break
+        if detector is not None and detector.erro:
+            encerrar_audio()
+            estado_jogo = "espera"
+            pausado_em = None
+            notificar_audio(
+                "Áudio desconectado. Reconecte o cabo e pressione Espaço para tentar novamente."
+            )
 
         agora = time.perf_counter()
-        midi, nivel = detector.estado()
+        midi, nivel = detector.estado() if detector is not None else (None, 0.0)
         velocidade_visual = max(
             lay.velocidade * velocidade_nota,
             velocidade_minima_pistas(notas, lay.raio),
@@ -565,7 +629,9 @@ def main():
         )
         tela.blit(partida_txt, partida_txt.get_rect(midleft=(m + int(12 * lay.esc), m + int(25 * lay.esc))))
 
-        if detector.saida is None:
+        if detector is None:
+            som_txt = "ÁUDIO AGUARDANDO"
+        elif detector.saida is None:
             som_txt = "SOM INDISPONÍVEL"
         elif detector.monitor:
             som_txt = f"SOM LIGADO  •  VOL {detector.volume:.1f}  •  {'OVERDRIVE' if detector.overdrive else 'LIMPO'}"
@@ -611,7 +677,7 @@ def main():
             lay.l - botoes["menos"].x - m,
         )
         tela.blit(vel_txt, (botoes["menos"].x, botoes["menos"].bottom + int(5 * escala_ui)))
-        if not metronomo_disponivel:
+        if detector is not None and not metronomo_disponivel:
             aviso_metro = fonte.render("Metrônomo sem dispositivo de áudio", True, (240, 170, 100))
             tela.blit(aviso_metro, (m, m + int(60 * lay.esc)))
 
@@ -623,7 +689,7 @@ def main():
             desenhar_painel(tela, menu_rect, (27, 31, 43), int(16 * escala_ui))
 
             # Cabeçalho em duas linhas: título e contexto nunca disputam espaço.
-            cabecalho_h = int(70 * escala_ui)
+            cabecalho_h = int(90 * escala_ui)
             cabecalho = pygame.Rect(menu_rect.x + 2, menu_rect.y + 2, menu_rect.width - 4, cabecalho_h)
             pygame.draw.rect(tela, (35, 57, 78), cabecalho, border_radius=int(14 * escala_ui))
             pygame.draw.rect(
@@ -636,11 +702,11 @@ def main():
                 fonte_menu_titulo, "BIBLIOTECA DE RIFFS", (248, 252, 255), menu_rect.width - int(48 * escala_ui)
             )
             tela.blit(titulo_menu, titulo_menu.get_rect(
-                midleft=(menu_rect.x + int(24 * escala_ui), menu_rect.y + int(22 * escala_ui))
+                midleft=(menu_rect.x + int(30 * escala_ui), menu_rect.y + int(28 * escala_ui))
             ))
             contador = fonte_menu_info.render(f"{len(RIFFS)} disponíveis", True, (161, 229, 198))
             largura_subtitulo = (
-                menu_rect.width - int(48 * escala_ui) - contador.get_width() - int(20 * escala_ui)
+                menu_rect.width - int(60 * escala_ui) - contador.get_width() - int(24 * escala_ui)
             )
             subtitulo = render_cabe(
                 fonte_menu_info,
@@ -649,17 +715,17 @@ def main():
                 largura_subtitulo,
             )
             tela.blit(subtitulo, subtitulo.get_rect(
-                midleft=(menu_rect.x + int(24 * escala_ui), menu_rect.y + int(49 * escala_ui))
+                midleft=(menu_rect.x + int(30 * escala_ui), menu_rect.y + int(63 * escala_ui))
             ))
             tela.blit(contador, contador.get_rect(
-                midright=(menu_rect.right - int(24 * escala_ui), menu_rect.y + int(49 * escala_ui))
+                midright=(menu_rect.right - int(30 * escala_ui), menu_rect.y + int(63 * escala_ui))
             ))
 
             for chave, rect in riff_botoes.items():
                 selecionado = chave == riff_selecionado
                 focado = chave == riff_foco
                 hover = rect.collidepoint(pygame.mouse.get_pos()) or focado
-                card = rect.inflate(0, int(12 * escala_ui))
+                card = rect.inflate(0, int(16 * escala_ui))
                 cor_card = (39, 78, 66) if selecionado else ((50, 56, 74) if hover else (38, 43, 57))
                 cor_borda = (
                     (92, 227, 160)
@@ -676,15 +742,15 @@ def main():
                     )
 
                 # Toda linha reserva à direita a mesma área para a tag de status.
-                margem_x = int(22 * escala_ui)
-                largura_tag = int(78 * escala_ui)
+                margem_x = int(28 * escala_ui)
+                largura_tag = int(92 * escala_ui)
                 largura_nome = card.width - margem_x * 2 - largura_tag
                 linhas_nome = quebrar_linhas(fonte_menu_card, RIFFS[chave]["nome"], largura_nome)
                 # Em títulos excepcionalmente longos, o texto inteiro se adapta
                 # à largura de uma linha, em vez de invadir a descrição do card.
                 if len(linhas_nome) > 2:
                     linhas_nome = [RIFFS[chave]["nome"]]
-                y_titulo = card.y + int(16 * escala_ui)
+                y_titulo = card.y + int(20 * escala_ui)
                 altura_linha = fonte_menu_card.get_linesize()
                 for linha in linhas_nome:
                     titulo = render_cabe(fonte_menu_card, linha, (250, 252, 255), largura_nome)
@@ -697,13 +763,13 @@ def main():
                     (192, 205, 222), card.width - margem_x * 2,
                 )
                 tela.blit(desc, desc.get_rect(
-                    midleft=(card.x + margem_x, card.bottom - int(18 * escala_ui))
+                    midleft=(card.x + margem_x, card.bottom - int(22 * escala_ui))
                 ))
                 if selecionado:
                     selo = fonte_menu_info.render("EM USO", True, (13, 48, 34))
                     selo_rect = selo.get_rect()
                     selo_bg = pygame.Rect(
-                        card.right - largura_tag - int(12 * escala_ui), card.y + int(13 * escala_ui),
+                        card.right - largura_tag - int(16 * escala_ui), card.y + int(17 * escala_ui),
                         largura_tag, selo_rect.height + int(10 * escala_ui),
                     )
                     pygame.draw.rect(tela, (118, 236, 175), selo_bg, border_radius=6)
@@ -713,8 +779,23 @@ def main():
                 dica_txt = f"Setas ↑/↓ para navegar  •  Enter para escolher  •  {riff_scroll + 1}-{min(total_riffs, riff_scroll + riff_visiveis)} de {total_riffs}"
             else:
                 dica_txt = "Setas ↑/↓ para navegar  •  Enter para escolher  •  ESC para fechar"
-            dica = render_cabe(fonte_menu_info, dica_txt, (181, 194, 214), menu_rect.width - int(32 * escala_ui))
-            tela.blit(dica, dica.get_rect(center=(menu_rect.centerx, menu_rect.bottom - int(22 * escala_ui))))
+            dica = render_cabe(fonte_menu_info, dica_txt, (181, 194, 214), menu_rect.width - int(48 * escala_ui))
+            tela.blit(dica, dica.get_rect(center=(menu_rect.centerx, menu_rect.bottom - int(27 * escala_ui))))
+
+        if aviso_audio and agora < aviso_audio_ate:
+            aviso = render_cabe(
+                fonte_hud, aviso_audio, (255, 232, 198), lay.l - int(80 * escala_ui)
+            )
+            aviso_rect = pygame.Rect(
+                0,
+                0,
+                aviso.get_width() + int(36 * escala_ui),
+                aviso.get_height() + int(22 * escala_ui),
+            )
+            aviso_rect.center = (lay.l // 2, int(lay.a * 0.16))
+            pygame.draw.rect(tela, (70, 39, 31), aviso_rect, border_radius=int(10 * escala_ui))
+            pygame.draw.rect(tela, (235, 151, 91), aviso_rect, width=2, border_radius=int(10 * escala_ui))
+            tela.blit(aviso, aviso.get_rect(center=aviso_rect.center))
 
         if not menu_riffs_aberto:
             desenhar_afinador(tela, lay, fonte, fonte_g, midi)
@@ -722,17 +803,7 @@ def main():
         pygame.display.flip()
         clock.tick(60)
 
-    detector.parar()
-    detector.join(timeout=1.0)
-    stream.stop_stream()
-    stream.close()
-    if saida is not None:
-        try:
-            saida.stop_stream()
-            saida.close()
-        except Exception:  # noqa: BLE001
-            pass
-    p.terminate()
+    encerrar_audio()
     pygame.mixer.quit()
     pygame.quit()
 
