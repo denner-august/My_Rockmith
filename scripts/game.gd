@@ -5,6 +5,7 @@ const MUTED := Color8(163, 170, 188)
 var riffs := GameConfig.default_riffs()
 var riff_keys: Array[String] = []
 var selected_riff := "riff_imagem"
+var app_screen := "splash"
 var game_state := "espera"
 var notes: Array[Dictionary] = []
 var effects: Array[Dictionary] = []
@@ -39,14 +40,28 @@ var results_label: Label
 var riff_modal_shield: Control
 var top_hud: Control
 var center_message_container: Control
+var start_screen: Control
+var main_menu: Control
+var menu_info_overlay: Control
+var menu_info_title: Label
+var menu_info_body: Label
+var menu_info_return_button: Button
+var menu_info_page := ""
+var menu_buttons: Array[Button] = []
+var menu_texture: Texture2D
+var menu_return_to_main := false
 var action_buttons: Dictionary = {}
+var highway: Node
 
 func _ready() -> void:
 	get_window().title = "Mini Rocksmith"
 	get_window().size = Vector2i(1920, 1080)
 	get_window().mode = Window.MODE_EXCLUSIVE_FULLSCREEN
 	windowed = false
+	_build_3d_view()
 	_build_ui()
+	_build_start_screen()
+	_build_main_menu()
 	riff_keys.assign(riffs.keys())
 	RiffLibrary.load_all(riffs)
 	riff_keys.assign(riffs.keys())
@@ -67,11 +82,39 @@ func _process(delta: float) -> void:
 		game_time += delta
 		_update_notes()
 		_update_metronome()
+	if highway != null:
+		var highway_time := game_time if game_state != "pausado" else pause_time
+		highway.call("update_game", highway_time, notes, speed_multiplier)
 	for effect in effects:
 		effect["age"] = float(effect["age"]) + delta
 	effects = effects.filter(func(effect: Dictionary) -> bool: return float(effect["age"]) < GameConfig.EFFECT_DURATION)
 	_refresh_ui()
 	queue_redraw()
+
+func _build_3d_view() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "Gameplay3DLayer"
+	layer.layer = -1
+	add_child(layer)
+
+	var viewport_container := SubViewportContainer.new()
+	viewport_container.name = "HighwayViewportContainer"
+	viewport_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport_container.stretch = true
+	viewport_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(viewport_container)
+
+	var viewport := SubViewport.new()
+	viewport.name = "HighwayViewport"
+	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	viewport.own_world_3d = true
+	viewport_container.add_child(viewport)
+
+	var highway_script: Script = load("res://scripts/highway_3d.gd")
+	highway = Node3D.new()
+	highway.name = "GuitarHighway"
+	highway.set_script(highway_script)
+	viewport.add_child(highway)
 
 func _build_ui() -> void:
 	# Status e botões ocupam a faixa superior; o VBox da direita mantém os
@@ -173,6 +216,242 @@ func _build_ui() -> void:
 	riff_modal_shield.visible = false
 	add_child(riff_modal_shield)
 
+func _build_start_screen() -> void:
+	start_screen = Control.new()
+	start_screen.name = "StartScreen"
+	start_screen.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	start_screen.z_index = 20
+	start_screen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(start_screen)
+
+	var background := TextureRect.new()
+	background.name = "PhotoBackground"
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	background.texture = load("res://Photo Start/01.jpg")
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	start_screen.add_child(background)
+
+	var tint := ColorRect.new()
+	tint.name = "PhotoTint"
+	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tint.color = Color(0.015, 0.02, 0.04, 0.34)
+	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	start_screen.add_child(tint)
+
+	var lower_shade := ColorRect.new()
+	lower_shade.name = "InstructionShade"
+	lower_shade.anchor_top = 0.68
+	lower_shade.anchor_right = 1.0
+	lower_shade.anchor_bottom = 1.0
+	lower_shade.color = Color(0.015, 0.02, 0.04, 0.66)
+	lower_shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	start_screen.add_child(lower_shade)
+
+	var copy := VBoxContainer.new()
+	copy.name = "StartInstructions"
+	copy.anchor_left = 0.08
+	copy.anchor_top = 0.70
+	copy.anchor_right = 0.92
+	copy.anchor_bottom = 0.94
+	copy.alignment = BoxContainer.ALIGNMENT_CENTER
+	copy.add_theme_constant_override("separation", 12)
+	copy.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	start_screen.add_child(copy)
+
+	var title := _new_label(46, Color.WHITE)
+	title.text = "MINI ROCKSMITH"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.add_child(title)
+
+	var instruction := _new_label(23, Color8(232, 237, 249))
+	instruction.text = "Pressione qualquer tecla ou botão para abrir o menu"
+	instruction.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	instruction.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	instruction.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.add_child(instruction)
+
+func _build_main_menu() -> void:
+	main_menu = Control.new()
+	main_menu.name = "MainMenu"
+	main_menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	main_menu.z_index = 15
+	main_menu.visible = false
+	main_menu.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(main_menu)
+
+	var background := ColorRect.new()
+	background.name = "MenuLetterboxBackground"
+	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	background.color = Color(0.018, 0.015, 0.012)
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_menu.add_child(background)
+
+	var artwork := TextureRect.new()
+	artwork.name = "MenuArtwork"
+	artwork.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	artwork.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	menu_texture = load("res://Photo Start/menu_jogo_4x3.png")
+	artwork.texture = menu_texture
+	artwork.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	main_menu.add_child(artwork)
+
+	var menu_entries := [
+		{"text": "MÚSICAS", "callback": _open_music_library},
+		{"text": "TREINO", "callback": _start_training},
+		{"text": "CONFIGURAÇÕES", "callback": func() -> void: _show_menu_info("settings")},
+		{"text": "CRÉDITOS", "callback": func() -> void: _show_menu_info("credits")}
+	]
+	for entry in menu_entries:
+		var button := Button.new()
+		button.name = str(entry["text"]).replace(" ", "")
+		button.text = ""
+		button.tooltip_text = str(entry["text"])
+		button.focus_mode = Control.FOCUS_ALL
+		button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		button.z_index = 2
+		button.pressed.connect(entry["callback"])
+		var idle_style := _menu_button_style(Color(0.0, 0.0, 0.0, 0.0), Color(0.0, 0.0, 0.0, 0.0), 0)
+		var hover_style := _menu_button_style(Color(0.62, 0.20, 0.035, 0.12), Color(0.90, 0.70, 0.38, 0.72), 2)
+		var focus_style := _menu_button_style(Color(0.58, 0.17, 0.025, 0.10), Color(0.96, 0.73, 0.40, 0.9), 2)
+		button.add_theme_stylebox_override("normal", idle_style)
+		button.add_theme_stylebox_override("pressed", hover_style)
+		button.add_theme_stylebox_override("hover", hover_style)
+		button.add_theme_stylebox_override("focus", focus_style)
+		main_menu.add_child(button)
+		menu_buttons.append(button)
+	main_menu.resized.connect(_layout_main_menu_buttons)
+	_layout_main_menu_buttons()
+	_build_menu_info_overlay()
+
+func _menu_button_style(fill: Color, border: Color, border_width: int) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = fill
+	style.border_color = border
+	style.set_border_width_all(border_width)
+	style.set_corner_radius_all(12)
+	return style
+
+func _layout_main_menu_buttons() -> void:
+	if menu_texture == null or menu_buttons.size() != 4:
+		return
+	var source_size := menu_texture.get_size()
+	var viewport_size := get_viewport_rect().size
+	var image_scale := minf(viewport_size.x / source_size.x, viewport_size.y / source_size.y)
+	var image_size := source_size * image_scale
+	var image_origin := (viewport_size - image_size) * 0.5
+	var source_rects: Array[Rect2] = [
+		Rect2(390.0, 400.0, 672.0, 135.0),
+		Rect2(390.0, 552.0, 672.0, 132.0),
+		Rect2(390.0, 700.0, 672.0, 128.0),
+		Rect2(390.0, 846.0, 672.0, 132.0)
+	]
+	for index in menu_buttons.size():
+		var button := menu_buttons[index]
+		var source_rect := source_rects[index]
+		button.position = image_origin + source_rect.position * image_scale
+		button.size = source_rect.size * image_scale
+
+func _build_menu_info_overlay() -> void:
+	menu_info_overlay = Control.new()
+	menu_info_overlay.name = "MenuInfoOverlay"
+	menu_info_overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	menu_info_overlay.z_index = 5
+	menu_info_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	menu_info_overlay.visible = false
+	main_menu.add_child(menu_info_overlay)
+
+	var shade := ColorRect.new()
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.0, 0.0, 0.0, 0.76)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_info_overlay.add_child(shade)
+
+	var panel := PanelContainer.new()
+	panel.name = "InfoPanel"
+	panel.anchor_left = 0.25
+	panel.anchor_top = 0.25
+	panel.anchor_right = 0.75
+	panel.anchor_bottom = 0.75
+	var panel_style := _menu_button_style(Color(0.045, 0.035, 0.025, 0.98), Color(0.82, 0.63, 0.34, 1.0), 3)
+	panel_style.set_corner_radius_all(14)
+	panel.add_theme_stylebox_override("panel", panel_style)
+	menu_info_overlay.add_child(panel)
+
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 34)
+	margin.add_theme_constant_override("margin_top", 30)
+	margin.add_theme_constant_override("margin_right", 34)
+	margin.add_theme_constant_override("margin_bottom", 30)
+	panel.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 22)
+	margin.add_child(content)
+
+	menu_info_title = _new_label(32, Color8(238, 211, 165))
+	menu_info_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_info_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content.add_child(menu_info_title)
+
+	menu_info_body = _new_label(20, Color8(225, 220, 209))
+	menu_info_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_info_body.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	menu_info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	menu_info_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_info_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(menu_info_body)
+
+	menu_info_return_button = Button.new()
+	menu_info_return_button.text = "VOLTAR"
+	menu_info_return_button.custom_minimum_size = Vector2(220.0, 52.0)
+	menu_info_return_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	menu_info_return_button.pressed.connect(_close_menu_info)
+	content.add_child(menu_info_return_button)
+
+func _show_menu_info(page: String) -> void:
+	menu_info_page = page
+	if page == "settings":
+		menu_info_title.text = "CONFIGURAÇÕES"
+		menu_info_body.text = "ATALHOS DURANTE O JOGO\n\n[M] Som   •   [D] Timbre   •   [T] Metrônomo\n[↑] Aumentar volume   •   [↓] Diminuir volume\n[←] Menor latência   •   [→] Maior latência\n\nO estado atual aparece no HUD."
+	else:
+		menu_info_title.text = "CRÉDITOS"
+		menu_info_body.text = "MINI ROCKSMITH\n\nUm jogo de prática e reconhecimento de notas para guitarra.\n\nFeito com Godot Engine."
+	_refresh_ui()
+	menu_info_return_button.grab_focus()
+
+func _return_from_music_library() -> void:
+	riff_menu_open = false
+	menu_return_to_main = false
+	app_screen = "menu"
+	_refresh_ui()
+	if not menu_buttons.is_empty():
+		menu_buttons[0].call_deferred("grab_focus")
+
+func _close_menu_info() -> void:
+	menu_info_page = ""
+	_refresh_ui()
+	if not menu_buttons.is_empty():
+		menu_buttons[0].grab_focus()
+
+func _open_music_library() -> void:
+	menu_return_to_main = true
+	app_screen = "game"
+	riff_menu_open = true
+	riff_focus = maxi(0, riff_keys.find(selected_riff))
+	_update_riff_scroll()
+	_refresh_ui()
+	queue_redraw()
+
+func _start_training() -> void:
+	menu_return_to_main = false
+	_start_game()
+	_refresh_ui()
+
 func _new_label(font_size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", font_size)
@@ -217,10 +496,15 @@ func _refresh_ui() -> void:
 		var button: Button = action_buttons[profile]
 		button.button_pressed = speed_profile == profile
 	riff_modal_shield.visible = riff_menu_open
-	top_hud.visible = not riff_menu_open
-	center_message_container.visible = not riff_menu_open
+	var gameplay_visible := app_screen == "game"
+	start_screen.visible = app_screen == "splash"
+	main_menu.visible = app_screen == "menu"
+	top_hud.visible = gameplay_visible and not riff_menu_open
+	center_message_container.visible = gameplay_visible and not riff_menu_open
+	menu_info_overlay.visible = app_screen == "menu" and not menu_info_page.is_empty()
 
 func _open_riff_menu() -> void:
+	menu_return_to_main = false
 	riff_menu_open = true
 	riff_focus = maxi(0, riff_keys.find(selected_riff))
 	_update_riff_scroll()
@@ -268,6 +552,10 @@ func _make_click(frequency: float, volume: float) -> AudioStreamWAV:
 func _start_game() -> void:
 	if mic == null:
 		return
+	app_screen = "game"
+	menu_info_page = ""
+	riff_menu_open = false
+	menu_return_to_main = false
 	notes = RiffLibrary.build_notes(riffs[selected_riff], speed_multiplier)
 	game_time = 0.0
 	score = 0
@@ -278,6 +566,9 @@ func _start_game() -> void:
 	effects.clear()
 	last_beat = -1
 	game_state = "jogando"
+	if highway != null:
+		highway.call("set_notes", notes)
+		highway.call("update_game", 0.0, notes, speed_multiplier)
 
 func _toggle_pause() -> void:
 	if game_state == "jogando":
@@ -295,6 +586,8 @@ func _update_notes() -> void:
 			note["estado"] = "errou"
 			misses += 1
 			combo = 0
+			if highway != null:
+				highway.call("pulse_lane", int(note["corda"]), false)
 			_add_effect(note, false, "ERROU")
 		elif absf(audio_time - float(note["t"])) <= GameConfig.HIT_WINDOW and GameConfig.pitch_matches(mic.midi, int(note["midi"])):
 			note["estado"] = "acertou"
@@ -304,6 +597,8 @@ func _update_notes() -> void:
 			var perfect := absf(audio_time - float(note["t"])) <= 0.06
 			var gain := 100 + mini(combo, 10) * 10 + (50 if perfect else 0)
 			score += gain
+			if highway != null:
+				highway.call("pulse_lane", int(note["corda"]), true)
 			_add_effect(note, true, ("PERFEITO" if perfect else "BOA") + "  +" + str(gain))
 	var finished := not notes.is_empty()
 	for note in notes:
@@ -327,19 +622,51 @@ func _update_metronome() -> void:
 		last_beat = beat
 
 func _input(event: InputEvent) -> void:
+	if app_screen == "splash":
+		if _is_start_button_event(event):
+			app_screen = "menu"
+			_refresh_ui()
+			if not menu_buttons.is_empty():
+				menu_buttons[0].call_deferred("grab_focus")
+			get_viewport().set_input_as_handled()
+		return
+	if app_screen == "menu":
+		if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			if not menu_info_page.is_empty():
+				_close_menu_info()
+			else:
+				app_screen = "splash"
+				_refresh_ui()
+			get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 	elif event is InputEventMouseButton and event.pressed and riff_menu_open:
 		_handle_click((event as InputEventMouseButton).position)
 		get_viewport().set_input_as_handled()
 
+func _is_start_button_event(event: InputEvent) -> bool:
+	if event is InputEventKey:
+		return event.pressed and not event.echo
+	if event is InputEventMouseButton:
+		return event.pressed
+	if event is InputEventJoypadButton:
+		return event.pressed
+	if event is InputEventScreenTouch:
+		return event.pressed
+	return false
+
 func _handle_key(event: InputEventKey) -> void:
 	var key := event.keycode
 	if riff_menu_open:
 		if key == KEY_ESCAPE:
-			riff_menu_open = false
-			if game_state == "pausado":
+			if menu_return_to_main:
+				_return_from_music_library()
+			elif game_state == "pausado":
+				riff_menu_open = false
 				_toggle_pause()
+			else:
+				riff_menu_open = false
 			_refresh_ui()
 		elif key == KEY_UP or key == KEY_LEFT:
 			riff_focus = maxi(0, riff_focus - 1)
@@ -405,9 +732,13 @@ func _handle_click(point: Vector2) -> void:
 	if riff_menu_open:
 		var menu := Rect2(Vector2(size.x * 0.15, size.y * 0.15), Vector2(size.x * 0.70, size.y * 0.70))
 		if not menu.has_point(point):
-			riff_menu_open = false
-			if game_state == "pausado":
+			if menu_return_to_main:
+				_return_from_music_library()
+			elif game_state == "pausado":
+				riff_menu_open = false
 				_toggle_pause()
+			else:
+				riff_menu_open = false
 			_refresh_ui()
 			queue_redraw()
 			return
@@ -430,35 +761,15 @@ func _handle_click(point: Vector2) -> void:
 func _draw() -> void:
 	var size := get_viewport_rect().size
 	var scale := minf(size.x / 800.0, size.y / 520.0)
-	var top := size.y * 0.38
-	var target_y := size.y * 0.74
-	var end_y := size.y * 0.80
-	var gap := minf(size.y * 0.17, size.x * 0.8 / 6.0)
-	var x0 := size.x / 2.0 - 2.5 * gap
-	var radius := maxf(12.0, gap * 0.15)
-	var lane_x: Array[float] = []
-	for i in 6:
-		lane_x.append(x0 + i * gap)
-		_draw_line(Vector2(lane_x[i], top), Vector2(lane_x[i], end_y), Color8(55,55,62), maxf(1.0, 2.0 * scale))
-		_draw_text(GameConfig.STRING_NAMES[i], Vector2(lane_x[i], size.y * 0.83), 24.0 * scale, GameConfig.STRING_COLORS[i], HORIZONTAL_ALIGNMENT_CENTER)
-	_draw_line(Vector2(lane_x[0] - gap * 0.45, target_y), Vector2(lane_x[5] + gap * 0.45, target_y), Color.WHITE, maxf(2.0, 4.0 * scale))
-	var minimum_speed := _minimum_lane_speed(radius)
-	var visual_speed := maxf((target_y - top) / GameConfig.VISIBLE_SECONDS * speed_multiplier, minimum_speed)
 	if game_state == "jogando" or game_state == "pausado":
 		var elapsed := game_time if game_state == "jogando" else pause_time
-		for note in notes:
-			if note["estado"] == "acertou": continue
-			var y := target_y - (float(note["t"]) - elapsed) * visual_speed
-			if y < top - radius or y > end_y: continue
-			var lane := int(note["corda"])
-			var color: Color = Color8(110,45,45) if note["estado"] == "errou" else GameConfig.STRING_COLORS[lane]
-			draw_circle(Vector2(lane_x[lane], y), radius, color)
-			draw_arc(Vector2(lane_x[lane], y), radius, 0.0, TAU, 48, Color8(18,20,28), maxf(2.0, 2.0 * scale), true)
-			_draw_text(str(note["traste"]), Vector2(lane_x[lane], y + 7.0 * scale), 21.0 * scale, Color.BLACK if note["estado"] != "errou" else Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-			_draw_text(GameConfig.SOLFEGE[posmod(int(note["midi"]), 12)], Vector2(lane_x[lane] + (radius + 42.0 * scale) * (1.0 if lane < 5 else -1.0), y + 5.0 * scale), 15.0 * scale, Color8(238,241,250), HORIZONTAL_ALIGNMENT_CENTER)
 		if elapsed < GameConfig.COUNTDOWN:
-			_draw_text("%.1f" % (GameConfig.COUNTDOWN - elapsed), Vector2(size.x / 2.0, size.y * 0.35), 64.0 * scale, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-	_draw_effects(lane_x, top, end_y, target_y, radius, scale, size)
+			_draw_text("%.1f" % (GameConfig.COUNTDOWN - elapsed), Vector2(size.x / 2.0, size.y * 0.43), 64.0 * scale, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+	if not effects.is_empty():
+		var effect: Dictionary = effects.back()
+		var effect_color: Color = GameConfig.GREEN if effect["ok"] else GameConfig.RED
+		effect_color.a = 1.0 - float(effect["age"]) / GameConfig.EFFECT_DURATION
+		_draw_text(str(effect["texto"]), Vector2(size.x / 2.0, size.y * 0.40), 30.0 * scale, effect_color, HORIZONTAL_ALIGNMENT_CENTER)
 	_draw_tuner(size, scale)
 	if riff_menu_open: _draw_riff_menu(size, scale)
 
